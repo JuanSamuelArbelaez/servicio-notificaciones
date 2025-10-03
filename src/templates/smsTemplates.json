@@ -1,0 +1,11 @@
+{
+  "password_recovery": "Hola {{name}}, usa este enlace para restablecer tu contraseña: {{url}}",
+
+  "password_changed_alert": "Hola {{name}}, tu contraseña fue cambiada exitosamente. Si no fuiste tú, contacta soporte de inmediato.",
+
+  "login_alert": "Hola {{name}}, detectamos un inicio de sesión en tu cuenta. Si no fuiste tú, cambia tu contraseña y contacta soporte.",
+
+  "welcome": "¡Bienvenido {{name}}! Gracias por registrarte. Valida tu cuenta aquí: {{url}}",
+
+  "account_verified": "✅ Hola {{name}}, tu cuenta ya está verificada. ¡Ya puedes disfrutar de todos nuestros servicios!"
+}

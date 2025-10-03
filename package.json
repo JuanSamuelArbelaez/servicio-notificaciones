@@ -1,0 +1,16 @@
+{
+  "name": "servicio-notificaciones",
+  "version": "1.0.0",
+  "main": "src/app.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/app.js"
+  },
+  "dependencies": {
+    "@sendgrid/mail": "^8.1.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "kafkajs": "^2.2.4",
+    "twilio": "^5.9.0"
+  }
+}
