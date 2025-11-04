@@ -5,58 +5,102 @@ import path from "path";
 import sgMail from "@sendgrid/mail";
 import twilio from "twilio";
 import { Kafka } from "kafkajs";
+import { logger } from "./Logger.js";
 
 // --- Configuración de variables de entorno ---
 dotenv.config();
 const app = express();
-app.use(express.json());   // Permite recibir datos en formato JSON en el body
+app.use(express.json());
+logger.info("[App]", "Inicializando servicio de notificaciones");
 
 // --- Cargar plantillas ---
-const emailTemplates = JSON.parse(
-    fs.readFileSync(path.join("src/templates/emailTemplates.json"))
-);
-const smsTemplates = JSON.parse(
-    fs.readFileSync(path.join("src/templates/smsTemplates.json"))
-);
+let emailTemplates = {};
+let smsTemplates = {};
+
+try {
+    emailTemplates = JSON.parse(
+        fs.readFileSync(path.join("src/templates/emailTemplates.json"))
+    );
+    smsTemplates = JSON.parse(
+        fs.readFileSync(path.join("src/templates/smsTemplates.json"))
+    );
+    logger.info("[App]", "Plantillas cargadas correctamente", {
+        emailTemplatesCount: Object.keys(emailTemplates).length,
+        smsTemplatesCount: Object.keys(smsTemplates).length,
+    });
+} catch (error) {
+    logger.error("[App]", "Error cargando plantillas", { error: error.message });
+    process.exit(1);
+}
 
 // Helper para renderizar plantillas con {{variables}}
-const renderTemplate = (template, data) => {
-    return template.replace(/{{(.*?)}}/g, (_, key) => data[key.trim()] || "");
-};
+const renderTemplate = (template, data) =>
+    template.replace(/{{(.*?)}}/g, (_, key) => data[key.trim()] || "");
 
 // --- Configuración de SendGrid ---
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+try {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    logger.info("[EmailService]", "SendGrid inicializado correctamente", {
+        sender: process.env.SENDGRID_FROM,
+    });
+} catch (error) {
+    logger.error("[EmailService]", "Error inicializando SendGrid", {
+        error: error.message,
+    });
+    process.exit(1);
+}
 
 // --- Configuración de Kafka ---
-const kafka = new Kafka({
-    clientId: "notificaciones-service",
-    brokers: process.env.KAFKA_BROKERS.split(","), // ej: "kafka:9092"
-});
-const consumer = kafka.consumer({ groupId: "notificaciones-group" });
+let consumer;
+try {
+    const kafka = new Kafka({
+        clientId: "notificaciones-service",
+        brokers: process.env.KAFKA_BROKERS.split(","),
+    });
+    consumer = kafka.consumer({ groupId: "notificaciones-group" });
+    logger.info("[Kafka]", "Cliente Kafka configurado correctamente", {
+        brokers: process.env.KAFKA_BROKERS,
+    });
+} catch (error) {
+    logger.error("[Kafka]", "Error configurando Kafka", { error: error.message });
+    process.exit(1);
+}
 
 // --- Configuración de Twilio ---
-const client = twilio(
-    process.env.TWILIO_ACCOUNT_SID,
-    process.env.TWILIO_AUTH_TOKEN
-);
+let client;
+try {
+    client = twilio(
+        process.env.TWILIO_ACCOUNT_SID,
+        process.env.TWILIO_AUTH_TOKEN
+    );
+    logger.info("[SmsService]", "Cliente Twilio inicializado correctamente", {
+        phone: process.env.TWILIO_PHONE,
+    });
+} catch (error) {
+    logger.error("[SmsService]", "Error inicializando Twilio", {
+        error: error.message,
+    });
+    process.exit(1);
+}
 
 // ------------------ ENDPOINTS ------------------
 
-/**
- * Endpoint para enviar correos electrónicos
- * Método: POST
- * Ruta: /send-email
- * Body esperado:
- * {
- *   "to": "correo@destino.com",
- *   "template": "welcome",
- *   "data": { "name": "Anderson" }
- * }
- */
+// --- Enviar correo ---
 app.post("/send-email", async (req, res) => {
     const { to, template, data } = req.body;
+    logger.info("[EmailService]", "Solicitud recibida para enviar correo", {
+        to,
+        template,
+    });
 
     try {
+        if (!emailTemplates[template]) {
+            logger.warn("[EmailService]", "Plantilla de correo no encontrada", {
+                template,
+            });
+            return res.status(400).json({ message: "Plantilla de correo no encontrada" });
+        }
+
         const subject = renderTemplate(emailTemplates[template].subject, data);
         const text = renderTemplate(emailTemplates[template].text, data);
 
@@ -67,9 +111,14 @@ app.post("/send-email", async (req, res) => {
             text,
         });
 
+        logger.info("[EmailService]", "Correo enviado exitosamente", { to, template });
         res.status(200).json({ message: "Correo enviado ✅" });
     } catch (error) {
-        console.error(error);
+        logger.error("[EmailService]", "Error enviando correo", {
+            error: error.message,
+            to,
+            template,
+        });
         res.status(500).json({
             message: "Error enviando correo",
             error: error.message,
@@ -77,21 +126,20 @@ app.post("/send-email", async (req, res) => {
     }
 });
 
-/**
- * Endpoint para enviar SMS
- * Método: POST
- * Ruta: /send-sms
- * Body esperado:
- * {
- *   "to": "+573001112233",
- *   "template": "verification",
- *   "data": { "name": "Anderson", "code": "123456" }
- * }
- */
+// --- Enviar SMS ---
 app.post("/send-sms", async (req, res) => {
     const { to, template, data } = req.body;
+    logger.info("[SmsService]", "Solicitud recibida para enviar SMS", {
+        to,
+        template,
+    });
 
     try {
+        if (!smsTemplates[template]) {
+            logger.warn("[SmsService]", "Plantilla SMS no encontrada", { template });
+            return res.status(400).json({ message: "Plantilla SMS no encontrada" });
+        }
+
         const body = renderTemplate(smsTemplates[template], data);
 
         const message = await client.messages.create({
@@ -100,12 +148,20 @@ app.post("/send-sms", async (req, res) => {
             to,
         });
 
+        logger.info("[SmsService]", "SMS enviado exitosamente", {
+            to,
+            sid: message.sid,
+        });
         res.status(200).json({
             message: "SMS enviado ✅",
             sid: message.sid,
         });
     } catch (error) {
-        console.error(error);
+        logger.error("[SmsService]", "Error enviando SMS", {
+            error: error.message,
+            to,
+            template,
+        });
         res.status(500).json({
             message: "Error enviando SMS",
             error: error.message,
@@ -113,65 +169,113 @@ app.post("/send-sms", async (req, res) => {
     }
 });
 
+
 // ------------------ KAFKA CONSUMER ------------------
-
 const startKafkaConsumer = async () => {
-    await consumer.connect();
-    await consumer.subscribe({
-        topic: process.env.KAFKA_TOPIC || "notifications",
-        fromBeginning: false,
-    });
+    const logContext = "kafka-consumer";
 
-    console.log("✅ Consumidor Kafka escuchando topic:", process.env.KAFKA_TOPIC || "notifications");
+    try {
+        await consumer.connect();
+        logger.info(logContext, "Conexión establecida con Kafka");
 
-    await consumer.run({
-        eachMessage: async ({ topic, partition, message }) => {
-            try {
-                const payload = JSON.parse(message.value.toString());
-                console.log("📩 Mensaje recibido de Kafka:", payload);
+        await consumer.subscribe({
+            topic: process.env.KAFKA_TOPIC || "notifications",
+            fromBeginning: false,
+        });
 
-                if (payload.type === "EMAIL") {
-                    const template = emailTemplates[payload.template];
+        logger.info(logContext, "Suscripción exitosa al topic", {
+            topic: process.env.KAFKA_TOPIC || "notifications",
+        });
 
-                    if (!template) {
-                        console.error(`❌ Template no encontrado: ${payload.template}`);
-                        return;
+        await consumer.run({
+            eachMessage: async ({ topic, partition, message }) => {
+                const meta = { topic, partition, offset: message.offset };
+
+                try {
+                    const payload = JSON.parse(message.value.toString());
+                    logger.info(logContext, "Mensaje recibido de Kafka", { ...meta, payload });
+
+                    if (payload.type === "EMAIL") {
+                        const template = emailTemplates[payload.template];
+
+                        if (!template) {
+                            logger.error(logContext, "Template no encontrado", {
+                                template: payload.template,
+                                ...meta,
+                            });
+                            return;
+                        }
+
+                        const subject = renderTemplate(template.subject, payload.data);
+                        const text = renderTemplate(template.text, payload.data);
+
+                        await sgMail.send({
+                            to: payload.to,
+                            from: process.env.SENDGRID_FROM,
+                            subject,
+                            text,
+                        });
+
+                        logger.info(logContext, "Correo enviado exitosamente", {
+                            to: payload.to,
+                            template: payload.template,
+                            subject,
+                            ...meta,
+                        });
+
+                    } else if (payload.type === "SMS") {
+                        const body = renderTemplate(smsTemplates[payload.template], payload.data);
+
+                        await client.messages.create({
+                            body,
+                            from: process.env.TWILIO_PHONE,
+                            to: payload.to,
+                        });
+
+                        logger.info(logContext, "SMS enviado exitosamente", {
+                            to: payload.to,
+                            template: payload.template,
+                            ...meta,
+                        });
+
+                    } else {
+                        logger.warn(logContext, "Tipo de mensaje Kafka no reconocido", {
+                            type: payload.type,
+                            ...meta,
+                        });
                     }
 
-                    // Siempre usar el subject y text del template
-                    const subject = renderTemplate(template.subject, payload.data);
-                    const text = renderTemplate(template.text, payload.data);
-
-                    await sgMail.send({
-                        to: payload.to,
-                        from: process.env.SENDGRID_FROM,
-                        subject,
-                        text,
+                } catch (error) {
+                    logger.error(logContext, "Error procesando mensaje Kafka", {
+                        error: error.message,
+                        stack: error.stack,
+                        ...meta,
                     });
-
-                    console.log("📧 Correo enviado vía Kafka ✅");
-                } else if (payload.type === "SMS") {
-                    const body = renderTemplate(smsTemplates[payload.template], payload.data);
-
-                    await client.messages.create({
-                        body,
-                        from: process.env.TWILIO_PHONE,
-                        to: payload.to,
-                    });
-
-                    console.log("📱 SMS enviado vía Kafka ✅");
                 }
+            },
+        });
 
-            } catch (error) {
-                console.error("❌ Error procesando mensaje Kafka:", error);
-            }
-        },
-    });
+        logger.info(logContext, "Consumidor Kafka en ejecución");
+
+    } catch (error) {
+        logger.error(logContext, "Error inicializando consumidor Kafka", {
+            error: error.message,
+            stack: error.stack,
+        });
+
+        // Reintento automático si el consumidor falla
+        setTimeout(() => {
+            logger.warn(logContext, "Reintentando conexión con Kafka en 5s");
+            startKafkaConsumer();
+        }, 5000);
+    }
 };
 
 // --- Servidor Express ---
 const PORT = process.env.PORT || 8083;
 app.listen(PORT, () => {
-    console.log(`✅ Servicio de notificaciones corriendo en puerto ${PORT}`);
-    startKafkaConsumer(); // Arrancamos Kafka al levantar el microservicio
+    logger.info("notification-service", "Servicio de notificaciones iniciado", {
+        port: PORT,
+    });
+    startKafkaConsumer();
 });
