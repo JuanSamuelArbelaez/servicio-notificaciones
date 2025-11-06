@@ -13,6 +13,50 @@ const app = express();
 app.use(express.json());
 logger.info("[App]", "Inicializando servicio de notificaciones");
 
+// Validar variables de entorno requeridas
+const requiredEnvVars = [
+    'SENDGRID_API_KEY',
+    'SENDGRID_FROM',
+    'KAFKA_BROKERS',
+    'TWILIO_ACCOUNT_SID',
+    'TWILIO_AUTH_TOKEN',
+    'TWILIO_PHONE'
+];
+
+const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+if (missingVars.length > 0) {
+    logger.error("[App]", "Variables de entorno faltantes", { missing: missingVars });
+    process.exit(1);
+}
+
+// --- Tiempo de inicio y versión para health checks ---
+const START_TIME = Date.now();
+let VERSION = "1.0.0";
+try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8"));
+    VERSION = packageJson.version || "1.0.0";
+} catch (error) {
+    logger.warn("[App]", "No se pudo leer la versión del package.json", { error: error.message });
+}
+
+// Función para formatear uptime
+const formatUptime = (seconds) => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (days > 0) {
+        return `${days}d ${hours}h ${minutes}m ${secs}s`;
+    } else if (hours > 0) {
+        return `${hours}h ${minutes}m ${secs}s`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${secs}s`;
+    } else {
+        return `${secs}s`;
+    }
+};
+
 // --- Cargar plantillas ---
 let emailTemplates = {};
 let smsTemplates = {};
