@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  # Pruebas unitarias
+  notification-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: notification-tests
+    environment:
+      NODE_ENV: test
+    command: npm test
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  # Pruebas con cobertura
+  notification-coverage:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: notification-coverage
+    environment:
+      NODE_ENV: test
+    command: npm run test:coverage
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./coverage:/app/coverage

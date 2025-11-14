@@ -1,0 +1,20 @@
+# Dockerfile.test para servicio-notificaciones
+FROM node:18-alpine
+
+# Instalar herramientas necesarias
+RUN apk add --no-cache curl
+
+# Crear directorio de trabajo
+WORKDIR /app
+
+# Copiar archivos de dependencias
+COPY package*.json ./
+
+# Instalar TODAS las dependencias (incluidas devDependencies)
+RUN npm install
+
+# Copiar el resto del código
+COPY . .
+
+# Comando por defecto: ejecutar pruebas
+CMD ["npm", "test"]

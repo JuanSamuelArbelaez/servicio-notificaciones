@@ -4,7 +4,12 @@
   "main": "src/app.js",
   "type": "module",
   "scripts": {
-    "start": "node src/app.js"
+    "start": "node src/app.js",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --verbose",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
+    "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest tests/unit --verbose",
+    "test:integration": "NODE_OPTIONS=--experimental-vm-modules jest tests/integration --verbose"
   },
   "dependencies": {
     "@sendgrid/mail": "^8.1.5",
@@ -12,5 +17,10 @@
     "express": "^5.1.0",
     "kafkajs": "^2.2.4",
     "twilio": "^5.9.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3",
+    "@jest/globals": "^29.7.0"
   }
 }
