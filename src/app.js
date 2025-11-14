@@ -315,6 +315,57 @@ const startKafkaConsumer = async () => {
     }
 };
 
+// --- Health Check Endpoints ---
+app.get("/health", (req, res) => {
+    const uptimeSeconds = Math.floor((Date.now() - START_TIME) / 1000);
+    const startTimeISO = new Date(START_TIME).toISOString();
+    
+    res.json({
+        status: "UP",
+        checks: [
+            {
+                data: {
+                    from: startTimeISO,
+                    status: "READY"
+                },
+                name: "Readiness check",
+                status: "UP"
+            },
+            {
+                data: {
+                    from: startTimeISO,
+                    status: "ALIVE"
+                },
+                name: "Liveness check",
+                status: "UP"
+            }
+        ],
+        version: VERSION,
+        uptime: formatUptime(uptimeSeconds),
+        uptimeSeconds: uptimeSeconds
+    });
+});
+
+app.get("/health/ready", (req, res) => {
+    const uptimeSeconds = Math.floor((Date.now() - START_TIME) / 1000);
+    res.json({
+        status: "READY",
+        version: VERSION,
+        uptime: formatUptime(uptimeSeconds),
+        uptimeSeconds: uptimeSeconds
+    });
+});
+
+app.get("/health/live", (req, res) => {
+    const uptimeSeconds = Math.floor((Date.now() - START_TIME) / 1000);
+    res.json({
+        status: "ALIVE",
+        version: VERSION,
+        uptime: formatUptime(uptimeSeconds),
+        uptimeSeconds: uptimeSeconds
+    });
+});
+
 // --- Servidor Express ---
 const PORT = process.env.PORT || 8083;
 app.listen(PORT, () => {
